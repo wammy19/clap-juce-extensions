@@ -1099,7 +1099,7 @@ class ClapJuceWrapper : public clap::helpers::Plugin<
             if (processor->supportsMPE())
                 info->supported_dialects |= CLAP_NOTE_DIALECT_MIDI_MPE;
 
-            info->preferred_dialect = CLAP_NOTE_DIALECT_MIDI;
+            info->preferred_dialect = processor->supportsMPE() ? CLAP_NOTE_DIALECT_MIDI_MPE : CLAP_NOTE_DIALECT_MIDI;
 
             if (processorAsClapExtensions)
             {
@@ -1120,7 +1120,7 @@ class ClapJuceWrapper : public clap::helpers::Plugin<
             info->supported_dialects = CLAP_NOTE_DIALECT_MIDI;
             if (processor->supportsMPE())
                 info->supported_dialects |= CLAP_NOTE_DIALECT_MIDI_MPE;
-            info->preferred_dialect = CLAP_NOTE_DIALECT_MIDI;
+            info->preferred_dialect = processor->supportsMPE() ? CLAP_NOTE_DIALECT_MIDI_MPE : CLAP_NOTE_DIALECT_MIDI;
 
             if (processorAsClapExtensions)
             {
@@ -2030,6 +2030,23 @@ class ClapJuceWrapper : public clap::helpers::Plugin<
                 // The host sent a parameter modulation event for a parameter that doesn't implement
                 // clap_juce_parameter_capablities? Something must have gone wrong!
                 jassertfalse;
+            }
+        }
+        break;
+        case CLAP_EVENT_NOTE_EXPRESSION:
+        {
+            auto neEvent = reinterpret_cast<const clap_event_note_expression *>(event);
+            if (neEvent->expression_id == CLAP_NOTE_EXPRESSION_TUNING)
+            {
+                // Bitwig converts MPE per-note pitch bend to tuning (semitones) before sending
+                // to CLAP plugins. Convert back to MIDI pitch wheel so processBlock sees it.
+                // MPE standard pitch bend range is ±48 semitones.
+                constexpr double pbRangeSemitones = 48.0;
+                int pbRaw = static_cast<int>((neEvent->value / pbRangeSemitones) * 8192.0) + 8192;
+                pbRaw = std::clamp(pbRaw, 0, 16383);
+                const int midiChannel = (neEvent->channel >= 0) ? (neEvent->channel + 1) : 1;
+                midiBuffer.addEvent(juce::MidiMessage::pitchWheel(midiChannel, pbRaw),
+                                    (int)neEvent->header.time - sampleOffset);
             }
         }
         break;
