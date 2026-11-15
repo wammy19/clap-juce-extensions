@@ -2048,6 +2048,15 @@ class ClapJuceWrapper : public clap::helpers::Plugin<
                 midiBuffer.addEvent(juce::MidiMessage::pitchWheel(midiChannel, pbRaw),
                                     (int)neEvent->header.time - sampleOffset);
             }
+            else if (neEvent->expression_id == CLAP_NOTE_EXPRESSION_PRESSURE && neEvent->key >= 0)
+            {
+                // Per-note pressure (0-1) becomes polyphonic aftertouch on the note's channel and key.
+                const int pressure = juce::jlimit(0, 127, juce::roundToInt(neEvent->value * 127.0));
+                const int midiChannel = (neEvent->channel >= 0) ? (neEvent->channel + 1) : 1;
+                midiBuffer.addEvent(
+                    juce::MidiMessage::aftertouchChange(midiChannel, neEvent->key, pressure),
+                    (int)neEvent->header.time - sampleOffset);
+            }
         }
         break;
         case CLAP_EVENT_NOTE_END:
